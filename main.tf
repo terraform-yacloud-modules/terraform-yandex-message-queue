@@ -1,53 +1,74 @@
 # Локальные переменные для вычислений
 locals {
-  # Прямое и безопасное определение ARN для DLQ.
-  # Эта логика покрывает все три случая:
-  # 1. Если var.dlq_target_arn передан, используем его.
-  # 2. Если не передан, но var.create_dlq = true, используем ARN создаваемого ресурса.
-  # 3. Если ни одно из условий не выполнено, значение будет null, что не вызовет ошибок.
-  final_dlq_arn = var.dlq_target_arn != null ? var.dlq_target_arn : (var.create_dlq ? yandex_message_queue.dlq[0].arn : null)
-}
+  # Определяем имя для DLQ: используем переданное или генерируем на основе имени основной очереди
+  dlq_name = var.dlq_name != null ? var.dlq_name : "${var.name}-dlq"
 
-# Основной ресурс - очередь сообщений
-resource "yandex_message_queue" "main" {
-  name                        = var.name
-  fifo_queue                  = var.is_fifo
-  content_based_deduplication = var.is_fifo ? var.content_based_deduplication : null
-  tags                        = var.tags
+  # Определяем, нужно ли использовать политику перенаправления в DLQ
+  is_dlq_enabled = var.create_dlq || var.dlq_target_arn != null
 
-  # Добавлены недостающие параметры из variables.tf для полноты модуля
-  visibility_timeout_seconds = var.visibility_timeout_seconds
-  receive_wait_time_seconds  = var.receive_wait_time_seconds
-  message_retention_seconds  = var.message_retention_seconds
-  access_key                 = var.access_key
-  secret_key                 = var.secret_key
+  # Определяем ARN для DLQ: либо из создаваемой очереди, либо из переданной переменной
+  final_dlq_arn = var.create_dlq ? yandex_message_queue.dlq[0].arn : var.dlq_target_arn
 
-  # Условное создание redrive_policy.
-  # Атрибут будет добавлен к ресурсу, только если local.final_dlq_arn не является null.
-  # В противном случае Terraform просто проигнорирует этот блок, что нам и нужно.
-  redrive_policy = local.final_dlq_arn != null ? jsonencode({
+  # Формируем политику перенаправления сообщений (redrive policy) в формате JSON
+  redrive_policy = local.is_dlq_enabled ? jsonencode({
     deadLetterTargetArn = local.final_dlq_arn
-    maxReceiveCount     = var.dlq_max_receive_count
+    maxReceiveCount     = var.max_receive_count
   }) : null
-
-  # Зависимость гарантирует, что DLQ будет создана до того, как основная очередь
-  # попытается на нее сослаться (если DLQ создается этим модулем).
-  depends_on = [
-    yandex_message_queue.dlq
-  ]
 }
 
-# Ресурс очереди для недоставленных сообщений (DLQ)
+# --- Основная очередь сообщений ---
+resource "yandex_message_queue" "main" {
+  # Имя очереди, передаваемое извне модуля
+  name = var.is_fifo ? (strcontains(var.name, ".fifo") ? var.name : "${var.name}.fifo") : var.name
+
+  # Ключи доступа для Yandex Message Queue.
+  # Эти значения передаются напрямую в ресурс, как вы и просили.
+  # Теперь они используют правильные имена переменных из variables.tf.
+  access_key = var.access_key
+  secret_key = var.secret_key
+
+  # Параметры очереди, управляемые через переменные
+  visibility_timeout_seconds = var.visibility_timeout_seconds
+  message_retention_seconds  = var.message_retention_seconds
+  receive_wait_time_seconds  = var.receive_wait_time_seconds
+
+  # Параметры, специфичные для FIFO-очередей
+  content_based_deduplication = var.is_fifo ? var.content_based_deduplication : null
+  fifo_queue                    = var.is_fifo
+
+  # Применяем политику перенаправления в DLQ, если она включена
+  redrive_policy = local.redrive_policy
+
+  # Добавляем теги для лучшей идентификации ресурса
+  tags = merge(
+    var.tags,
+    {
+      created_by = "terraform-module"
+    }
+  )
+}
+
+# --- Очередь недоставленных сообщений (Dead Letter Queue) ---
+# Создается только если var.create_dlq установлено в true
 resource "yandex_message_queue" "dlq" {
-  # Создаем этот ресурс, только если create_dlq = true И не передан внешний ARN.
-  count = var.create_dlq && var.dlq_target_arn == null ? 1 : 0
+  # Используем count для условного создания ресурса
+  count = var.create_dlq ? 1 : 0
 
-  # Имя для DLQ генерируется на основе имени основной очереди.
-  # Если var.dlq_name не задано, формируем его автоматически.
-  name       = coalesce(var.dlq_name, "${var.name}-dlq${var.is_fifo ? ".fifo" : ""}")
+  name       = local.dlq_name
+  access_key = var.access_key
+  secret_key = var.secret_key
+
+  # DLQ обычно имеет такие же или более длительные сроки хранения
+  message_retention_seconds = var.message_retention_seconds
+
+  # FIFO-статус для DLQ должен соответствовать основной очереди
   fifo_queue = var.is_fifo
-  tags       = var.tags
 
-  # Параметры для DLQ, можно вынести в отдельные переменные при необходимости
-  message_retention_seconds = 1209600 # Для DLQ часто ставят максимальный срок хранения
+  tags = merge(
+    var.tags,
+    {
+      created_by = "terraform-module",
+      dlq_for    = var.name
+    }
+  )
 }
