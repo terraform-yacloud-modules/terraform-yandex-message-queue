@@ -1,84 +1,62 @@
-variable "name" {
-  description = "Уникальное имя создаваемой очереди сообщений. Должно соответствовать требованиям Yandex Cloud."
+variable "queue_name" {
+  description = "Название очереди сообщений"
   type        = string
+  default     = "example-terraform-queue"
 }
 
-variable "is_fifo" {
-  description = "Установить в 'true' для создания FIFO-очереди. Для стандартной очереди оставьте 'false'. При создании FIFO-очереди имя должно заканчиваться на '.fifo'."
-  type        = bool
-  default     = false
-}
-
-variable "visibility_timeout_seconds" {
-  description = "Таймаут видимости сообщения в секундах. После того как компонент получил сообщение, оно становится невидимым для других компонентов на это время."
+variable "visibility_timeout" {
+  description = "Время в секундах, в течение которого сообщение будет невидимо после получения"
   type        = number
-  default     = 600
+  default     = 30
 }
 
-variable "receive_wait_time_seconds" {
-  description = "Время ожидания поступления сообщений в очередь при использовании Long Polling (в секундах). Возможные значения: от 0 до 20."
+variable "message_retention" {
+  description = "Время в секундах, в течение которого сообщения будут храниться в очереди"
   type        = number
-  default     = 20
+  default     = 345600 # 4 дня
 }
 
-variable "message_retention_seconds" {
-  description = "Срок хранения сообщений в очереди в секундах. Минимальное значение: 60 (1 минута), максимальное: 1209600 (14 дней)."
+variable "receive_wait_time" {
+  description = "Время в секундах ожидания при получении сообщений (long polling)"
   type        = number
-  default     = 1209600
+  default     = 0
 }
 
-variable "content_based_deduplication" {
-  description = "Включение дедупликации по содержимому. Актуально только для FIFO-очередей. Если 'true', сообщения с одинаковым телом, отправленные в течение 5-минутного интервала, будут считаться дубликатами."
-  type        = bool
-  default     = false
+variable "max_message_size" {
+  description = "Максимальный размер сообщения в байтах"
+  type        = number
+  default     = 262144 # 256 KB
 }
 
-variable "create_dlq" {
-  description = "Установить в 'true', чтобы автоматически создать Dead Letter Queue (DLQ) для этой очереди. Если 'true', необходимо также указать 'max_receive_count'."
-  type        = bool
-  default     = false
+variable "delay_seconds" {
+  description = "Задержка в секундах перед тем как сообщение станет доступным для получения"
+  type        = number
+  default     = 0
 }
 
-variable "dlq_name" {
-  description = "Имя для автоматически создаваемой DLQ. Если не указано, будет сгенерировано на основе имени основной очереди (например, 'my-queue-dlq')."
+variable "environment" {
+  description = "Окружение (dev, staging, prod)"
   type        = string
-  default     = null
+  default     = "dev"
 }
 
-variable "dlq_target_arn" {
-  description = "ARN существующей очереди, которую нужно использовать в качестве DLQ. Если указано, 'create_dlq' будет проигнорировано."
+variable "project_name" {
+  description = "Название проекта"
   type        = string
-  default     = null
+  default     = "terraform-example"
 }
 
-variable "max_receive_count" {
-  description = "Количество попыток чтения сообщения из основной очереди перед его отправкой в DLQ. Обязательно, если используется политика перенаправления (create_dlq=true или указан dlq_target_arn)."
-  type        = number
-  default     = 3
-}
 
-variable "access_key" {
-  description = "Идентификатор статического ключа доступа сервисного аккаунта для очереди. Если не задан, будет использоваться ключ из конфигурации провайдера."
+variable "folder_id" {
+  description = "ID каталога Yandex Cloud"
   type        = string
   default     = null
-  sensitive   = true
 }
 
-variable "secret_key" {
-  description = "Секретная часть статического ключа доступа. Если не задан, будет использоваться ключ из конфигурации провайдера."
-  type        = string
-  default     = null
-  sensitive   = true
-}
 
-variable "tags" {
-  description = "Карта тегов для основной очереди."
-  type        = map(string)
-  default     = {}
-}
 
-variable "dlq_max_receive_count" {
-  description = "Максимальное количество раз, которое сообщение будет получено перед отправкой в DLQ."
+variable "bucket_max_size" {
+  description = "Максимальный размер бакета в байтах"
   type        = number
-  default     = 3
+  default     = 5368709120 # 5 GB
 }
