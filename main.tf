@@ -26,7 +26,7 @@ resource "yandex_iam_service_account" "example_sa" {
 }
 
 resource "yandex_resourcemanager_folder_iam_member" "sa_roles" {
-  for_each  = toset(["storage.admin", "ymq.admin", "kms.keys.encrypterDecrypter"])
+  for_each  = toset(["storage.admin", "ymq.admin"])
   folder_id = local.folder_id
   role      = each.value
   member    = "serviceAccount:${yandex_iam_service_account.example_sa.id}"
