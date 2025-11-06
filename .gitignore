@@ -19,3 +19,4 @@ Thumbs.db
 
 # Log files
 *.log
+.terraform.tfstate.lock.info
