@@ -1,4 +1,3 @@
-# Создание бакета Object Storage
 resource "yandex_storage_bucket" "example_bucket" {
   bucket     = "${var.project_name}-${var.environment}-bucket"
   access_key = yandex_iam_service_account_static_access_key.sa_static_key.access_key
@@ -13,7 +12,6 @@ resource "yandex_storage_bucket" "example_bucket" {
   depends_on = [yandex_resourcemanager_folder_iam_member.sa_roles]
 }
 
-# Создание статического ключа доступа для сервисного аккаунта
 resource "yandex_iam_service_account_static_access_key" "sa_static_key" {
   service_account_id = yandex_iam_service_account.example_sa.id
   description        = "Static access key for S3 bucket and Message Queue"
@@ -21,14 +19,12 @@ resource "yandex_iam_service_account_static_access_key" "sa_static_key" {
   depends_on = [yandex_resourcemanager_folder_iam_member.sa_roles]
 }
 
-# Создание сервисного аккаунта
 resource "yandex_iam_service_account" "example_sa" {
   name        = "${var.project_name}-${var.environment}-sa"
   description = "Service account for S3 bucket and Message Queue"
   folder_id   = local.folder_id
 }
 
-# Назначение ролей сервисному аккаунту
 resource "yandex_resourcemanager_folder_iam_member" "sa_roles" {
   for_each  = toset(["storage.admin", "ymq.admin", "editor", "viewer", "kms.keys.encrypterDecrypter"])
   folder_id = local.folder_id
@@ -36,7 +32,6 @@ resource "yandex_resourcemanager_folder_iam_member" "sa_roles" {
   member    = "serviceAccount:${yandex_iam_service_account.example_sa.id}"
 }
 
-# Создание очереди сообщений Yandex Message Queue
 resource "yandex_message_queue" "example_queue" {
   name                        = var.queue_name
   visibility_timeout_seconds  = var.visibility_timeout
