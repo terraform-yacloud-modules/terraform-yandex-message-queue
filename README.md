@@ -80,6 +80,30 @@ The service account needs the `ymq.admin` role on the folder to create and
 manage queues. `YC_FOLDER_ID` is not used by this module, but can be set for
 other resources in the same configuration.
 
+## Testing
+
+CI on pull requests runs static checks only: `terraform fmt`, `terraform
+validate` for the module and examples, TFLint and Checkov. Cloud end-to-end
+tests are not run automatically because repository secrets are not available to
+pull requests from forks.
+
+The end-to-end test can be run manually. It creates real queues with unique
+names, checks send/receive for standard and FIFO queues, FIFO ordering,
+content-based deduplication and dead letter queue redrive, and always destroys
+the created resources:
+
+```bash
+export YC_TOKEN="$(yc iam create-token)"
+export YC_MESSAGE_QUEUE_ACCESS_KEY="<key_id>"
+export YC_MESSAGE_QUEUE_SECRET_KEY="<secret>"
+
+./tests/e2e.sh
+```
+
+The script requires Terraform and Python 3 with boto3. The static access key
+must belong to a service account with the `ymq.admin` role in the folder where
+the queues are created.
+
 ## Examples
 
 Examples codified under
