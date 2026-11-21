@@ -1,13 +1,23 @@
-# Yandex Cloud Message Queue Terraform module
+# Terraform-модуль Message Queue для Yandex Cloud
 
-Terraform module which creates Yandex Cloud Message Queue (YMQ) resources.
+Модуль создаёт очередь Yandex Cloud Message Queue (YMQ) и, при необходимости,
+очередь недоставленных сообщений (DLQ) с redrive-политикой. Поддерживаются
+стандартные и FIFO-очереди.
 
-The module creates one queue and, optionally, a dead letter queue with a
-redrive policy. Both standard and FIFO queues are supported.
+## Возможности
 
-## Usage
+- создание стандартной или FIFO-очереди с настройкой времени видимости,
+  long polling, срока хранения, максимального размера сообщения и задержки;
+- включение content-based дедупликации для FIFO-очередей;
+- создание DLQ модулем либо использование существующей очереди через явную
+  redrive-политику;
+- независимая настройка DLQ: собственные время видимости, long polling, срок
+  хранения, максимальный размер сообщения, задержка, дедупликация и теги;
+- теги и регион для очередей.
 
-Standard queue with a dead letter queue:
+## Использование
+
+Стандартная очередь с очередью недоставленных сообщений:
 
 ```hcl
 module "queue" {
@@ -27,7 +37,7 @@ module "queue" {
 }
 ```
 
-FIFO queue with content-based deduplication:
+FIFO-очередь с content-based дедупликацией:
 
 ```hcl
 module "fifo_queue" {
@@ -39,12 +49,11 @@ module "fifo_queue" {
 }
 ```
 
-A dead letter queue must be the same type as the source queue. When
-`create_dlq = true`, the module creates a FIFO dead letter queue for a FIFO
-queue and a standard dead letter queue for a standard queue.
+DLQ должна быть того же типа, что и исходная очередь. При `create_dlq = true`
+модуль создаёт FIFO-DLQ для FIFO-очереди и стандартную DLQ для стандартной
+очереди.
 
-An existing queue can be used as a dead letter queue instead of creating a new
-one:
+Вместо создания новой DLQ можно указать существующую очередь:
 
 ```hcl
 module "queue" {
@@ -59,38 +68,72 @@ module "queue" {
 }
 ```
 
-`create_dlq` and `redrive_policy` are mutually exclusive.
+`create_dlq` и `redrive_policy` взаимоисключающие.
 
-## Authentication and folder
+## Настройка очереди недоставленных сообщений
 
-The `yandex_message_queue` resource has no `folder_id` argument. Yandex Cloud
-creates the queue in the folder that owns the static access key used for the
-YMQ API, so the key must belong to a service account from the target folder.
+По умолчанию DLQ создаётся с настройками YMQ. Параметры `dlq_*` позволяют
+настроить её отдельно от исходной очереди — например, хранить недоставленные
+сообщения дольше, чем в рабочей очереди, и опрашивать её с другим long polling:
 
-The provider still needs IAM authentication for its own initialization, and the
-YMQ API needs a static access key. In practice the following variables are used:
+```hcl
+module "queue" {
+  source = "git::https://github.com/terraform-yacloud-modules/terraform-yandex-message-queue.git?ref=v1.0.0"
 
-```bash
-export YC_TOKEN="$(yc iam create-token)"          # or YC_SERVICE_ACCOUNT_KEY_FILE
-export YC_MESSAGE_QUEUE_ACCESS_KEY="<key_id>"     # static access key of the service account
-export YC_MESSAGE_QUEUE_SECRET_KEY="<secret>"     # its secret
+  name = "my-queue"
+
+  message_retention_seconds = 345600
+
+  create_dlq        = true
+  max_receive_count = 5
+
+  dlq_visibility_timeout_seconds = 60
+  dlq_receive_wait_time_seconds  = 10
+  dlq_message_retention_seconds  = 1209600
+  dlq_max_message_size           = 131072
+  dlq_delay_seconds              = 0
+
+  dlq_tags = {
+    role = "dead-letter"
+  }
+}
 ```
 
-The service account needs the `ymq.admin` role on the folder to create and
-manage queues. `YC_FOLDER_ID` is not used by this module, but can be set for
-other resources in the same configuration.
+Если `dlq_tags` не задан, DLQ получает теги исходной очереди. Для FIFO-очереди
+можно включить `dlq_content_based_deduplication` — по умолчанию дедупликация в
+DLQ выключена.
 
-## Testing
+## Аутентификация и каталог
 
-CI on pull requests runs static checks only: `terraform fmt`, `terraform
-validate` for the module and examples, TFLint and Checkov. Cloud end-to-end
-tests are not run automatically because repository secrets are not available to
-pull requests from forks.
+У ресурса `yandex_message_queue` нет аргумента `folder_id`. Yandex Cloud
+создаёт очередь в каталоге, которому принадлежит статический ключ доступа,
+используемый для YMQ API. Поэтому ключ должен принадлежать сервисному
+аккаунту из нужного каталога.
 
-The end-to-end test can be run manually. It creates real queues with unique
-names, checks send/receive for standard and FIFO queues, FIFO ordering,
-content-based deduplication and dead letter queue redrive, and always destroys
-the created resources:
+Провайдеру также нужна IAM-аутентификация для инициализации, а YMQ API —
+статический ключ доступа. На практике используются переменные:
+
+```bash
+export YC_TOKEN="$(yc iam create-token)"          # или YC_SERVICE_ACCOUNT_KEY_FILE
+export YC_MESSAGE_QUEUE_ACCESS_KEY="<key_id>"     # статический ключ сервисного аккаунта
+export YC_MESSAGE_QUEUE_SECRET_KEY="<secret>"     # его секрет
+```
+
+Сервисному аккаунту нужна роль `ymq.admin` на каталог, чтобы создавать
+очереди и управлять ими. `YC_FOLDER_ID` этому модулю не нужен, но может
+пригодиться другим ресурсам в той же конфигурации.
+
+## Тестирование
+
+CI на pull request выполняет только статические проверки: `terraform fmt`,
+`terraform validate` для модуля и примеров, TFLint и Checkov. Сквозные тесты в
+облаке автоматически не запускаются, потому что секреты репозитория недоступны
+для pull request из форков.
+
+Сквозной тест можно запустить вручную. Он создаёт реальные очереди с
+уникальными именами, проверяет отправку и получение для стандартной и
+FIFO-очередей, порядок FIFO, content-based дедупликацию и перевод сообщения в
+DLQ, после чего всегда удаляет созданные ресурсы:
 
 ```bash
 export YC_TOKEN="$(yc iam create-token)"
@@ -100,22 +143,20 @@ export YC_MESSAGE_QUEUE_SECRET_KEY="<secret>"
 ./tests/e2e.sh
 ```
 
-The script requires Terraform and Python 3 with boto3. The static access key
-must belong to a service account with the `ymq.admin` role in the folder where
-the queues are created.
+Скрипту нужны Terraform и Python 3 с boto3. Статический ключ должен
+принадлежать сервисному аккаунту с ролью `ymq.admin` в каталоге, где создаются
+очереди.
 
-## Examples
+## Примеры
 
-Examples codified under
-the [`examples`](https://github.com/terraform-yacloud-modules/terraform-yandex-message-queue/tree/main/examples)
-are intended to give users references for how to use the module(s) as well as
-testing/validating changes to the source code of the module. If contributing to
-the project, please be sure to make any appropriate updates to the relevant
-examples to allow maintainers to test your changes and to keep the examples up
-to date for users. Thank you!
+Примеры в каталоге
+[`examples`](https://github.com/terraform-yacloud-modules/terraform-yandex-message-queue/tree/main/examples)
+служат справочником по использованию модуля и одновременно проверкой изменений
+в его коде. Если вы вносите вклад в проект, обновляйте примеры, чтобы
+мейнтейнеры могли проверить изменения, а примеры оставались актуальными.
 
-- [`examples/minimal`](https://github.com/terraform-yacloud-modules/terraform-yandex-message-queue/tree/main/examples/minimal) — one standard queue.
-- [`examples/complete`](https://github.com/terraform-yacloud-modules/terraform-yandex-message-queue/tree/main/examples/complete) — a standard queue with a dead letter queue and a FIFO queue.
+- [`examples/minimal`](https://github.com/terraform-yacloud-modules/terraform-yandex-message-queue/tree/main/examples/minimal) — одна стандартная очередь.
+- [`examples/complete`](https://github.com/terraform-yacloud-modules/terraform-yandex-message-queue/tree/main/examples/complete) — стандартная очередь с настроенной DLQ и FIFO-очередь с собственной FIFO-DLQ.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
@@ -149,7 +190,14 @@ No modules.
 | <a name="input_content_based_deduplication"></a> [content\_based\_deduplication](#input\_content\_based\_deduplication) | Enable content-based deduplication. Can be used only for FIFO queues. | `bool` | `false` | no |
 | <a name="input_create_dlq"></a> [create\_dlq](#input\_create\_dlq) | Create a dead letter queue for this queue and configure a redrive policy. | `bool` | `false` | no |
 | <a name="input_delay_seconds"></a> [delay\_seconds](#input\_delay\_seconds) | Time in seconds to delay new messages. Valid values: 0-900. | `number` | `0` | no |
+| <a name="input_dlq_content_based_deduplication"></a> [dlq\_content\_based\_deduplication](#input\_dlq\_content\_based\_deduplication) | Enable content-based deduplication for the dead letter queue. Can be used only for FIFO queues created by the module. | `bool` | `false` | no |
+| <a name="input_dlq_delay_seconds"></a> [dlq\_delay\_seconds](#input\_dlq\_delay\_seconds) | Time in seconds to delay new messages in the dead letter queue. Valid values: 0-900. | `number` | `0` | no |
+| <a name="input_dlq_max_message_size"></a> [dlq\_max\_message\_size](#input\_dlq\_max\_message\_size) | Maximum message size for the dead letter queue, in bytes. Valid values: 1024-262144. | `number` | `262144` | no |
+| <a name="input_dlq_message_retention_seconds"></a> [dlq\_message\_retention\_seconds](#input\_dlq\_message\_retention\_seconds) | Message retention period for the dead letter queue, in seconds. Valid values: 60-1209600. | `number` | `345600` | no |
 | <a name="input_dlq_name"></a> [dlq\_name](#input\_dlq\_name) | Name of the dead letter queue created by the module. Defaults to <name>-dlq or <name>-dlq.fifo for FIFO queues. | `string` | `null` | no |
+| <a name="input_dlq_receive_wait_time_seconds"></a> [dlq\_receive\_wait\_time\_seconds](#input\_dlq\_receive\_wait\_time\_seconds) | Long polling wait time for the dead letter queue, in seconds. Valid values: 0-20. | `number` | `0` | no |
+| <a name="input_dlq_tags"></a> [dlq\_tags](#input\_dlq\_tags) | A set of tags for the dead letter queue. Defaults to the tags of the source queue. | `map(string)` | `null` | no |
+| <a name="input_dlq_visibility_timeout_seconds"></a> [dlq\_visibility\_timeout\_seconds](#input\_dlq\_visibility\_timeout\_seconds) | Visibility timeout for messages in the dead letter queue, in seconds. Valid values: 0-43200. | `number` | `30` | no |
 | <a name="input_fifo_queue"></a> [fifo\_queue](#input\_fifo\_queue) | Whether the queue is a FIFO queue. The value cannot be changed after creation. | `bool` | `false` | no |
 | <a name="input_max_message_size"></a> [max\_message\_size](#input\_max\_message\_size) | Maximum message size in bytes. Valid values: 1024-262144. | `number` | `262144` | no |
 | <a name="input_max_receive_count"></a> [max\_receive\_count](#input\_max\_receive\_count) | Number of receives before a message is moved to the dead letter queue. Valid values: 1-1000. | `number` | `3` | no |
@@ -168,6 +216,7 @@ No modules.
 | <a name="output_arn"></a> [arn](#output\_arn) | Message queue ARN. |
 | <a name="output_dlq_arn"></a> [dlq\_arn](#output\_dlq\_arn) | Dead letter queue ARN, or null when the module does not create a DLQ. |
 | <a name="output_dlq_id"></a> [dlq\_id](#output\_dlq\_id) | Dead letter queue URL, or null when the module does not create a DLQ. |
+| <a name="output_dlq_name"></a> [dlq\_name](#output\_dlq\_name) | Dead letter queue name, or null when the module does not create a DLQ. |
 | <a name="output_id"></a> [id](#output\_id) | Message queue URL. |
 | <a name="output_name"></a> [name](#output\_name) | Message queue name. |
 <!-- END_TF_DOCS -->

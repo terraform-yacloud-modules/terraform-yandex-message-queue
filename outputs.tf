@@ -18,6 +18,11 @@ output "dlq_id" {
   value       = var.create_dlq ? yandex_message_queue.dlq[0].id : null
 }
 
+output "dlq_name" {
+  description = "Dead letter queue name, or null when the module does not create a DLQ."
+  value       = var.create_dlq ? yandex_message_queue.dlq[0].name : null
+}
+
 output "dlq_arn" {
   description = "Dead letter queue ARN, or null when the module does not create a DLQ."
   value       = var.create_dlq ? yandex_message_queue.dlq[0].arn : null

@@ -144,3 +144,73 @@ variable "redrive_policy" {
     error_message = "redrive_policy must be a valid JSON object with deadLetterTargetArn and maxReceiveCount, or null."
   }
 }
+
+#
+# dead letter queue settings
+#
+variable "dlq_visibility_timeout_seconds" {
+  description = "Visibility timeout for messages in the dead letter queue, in seconds. Valid values: 0-43200."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.dlq_visibility_timeout_seconds >= 0 && var.dlq_visibility_timeout_seconds <= 43200
+    error_message = "dlq_visibility_timeout_seconds must be between 0 and 43200."
+  }
+}
+
+variable "dlq_receive_wait_time_seconds" {
+  description = "Long polling wait time for the dead letter queue, in seconds. Valid values: 0-20."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.dlq_receive_wait_time_seconds >= 0 && var.dlq_receive_wait_time_seconds <= 20
+    error_message = "dlq_receive_wait_time_seconds must be between 0 and 20."
+  }
+}
+
+variable "dlq_message_retention_seconds" {
+  description = "Message retention period for the dead letter queue, in seconds. Valid values: 60-1209600."
+  type        = number
+  default     = 345600
+
+  validation {
+    condition     = var.dlq_message_retention_seconds >= 60 && var.dlq_message_retention_seconds <= 1209600
+    error_message = "dlq_message_retention_seconds must be between 60 and 1209600."
+  }
+}
+
+variable "dlq_max_message_size" {
+  description = "Maximum message size for the dead letter queue, in bytes. Valid values: 1024-262144."
+  type        = number
+  default     = 262144
+
+  validation {
+    condition     = var.dlq_max_message_size >= 1024 && var.dlq_max_message_size <= 262144
+    error_message = "dlq_max_message_size must be between 1024 and 262144."
+  }
+}
+
+variable "dlq_delay_seconds" {
+  description = "Time in seconds to delay new messages in the dead letter queue. Valid values: 0-900."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.dlq_delay_seconds >= 0 && var.dlq_delay_seconds <= 900
+    error_message = "dlq_delay_seconds must be between 0 and 900."
+  }
+}
+
+variable "dlq_content_based_deduplication" {
+  description = "Enable content-based deduplication for the dead letter queue. Can be used only for FIFO queues created by the module."
+  type        = bool
+  default     = false
+}
+
+variable "dlq_tags" {
+  description = "A set of tags for the dead letter queue. Defaults to the tags of the source queue."
+  type        = map(string)
+  default     = null
+}
