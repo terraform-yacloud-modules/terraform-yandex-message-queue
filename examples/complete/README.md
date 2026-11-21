@@ -6,6 +6,11 @@ This example creates:
 - a FIFO queue with content-based deduplication and its own FIFO dead letter
   queue.
 
+Both dead letter queues are configured explicitly with their own visibility
+timeout, long polling, retention period, maximum message size and tags, so the
+example also covers the `dlq_*` module inputs. The FIFO dead letter queue also
+enables content-based deduplication.
+
 ## Usage
 
 ```bash

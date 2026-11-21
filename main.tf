@@ -11,6 +11,9 @@ locals {
     deadLetterTargetArn = yandex_message_queue.dlq[0].arn
     maxReceiveCount     = var.max_receive_count
   }) : var.redrive_policy
+
+  # The DLQ inherits the source queue tags unless dedicated tags are provided.
+  dlq_tags = var.dlq_tags == null ? var.tags : var.dlq_tags
 }
 
 resource "yandex_message_queue" "this" {
@@ -45,6 +48,11 @@ resource "yandex_message_queue" "this" {
     }
 
     precondition {
+      condition     = !var.dlq_content_based_deduplication || (var.create_dlq && var.fifo_queue)
+      error_message = "dlq_content_based_deduplication can be enabled only when create_dlq and fifo_queue are true."
+    }
+
+    precondition {
       condition     = !(var.create_dlq && var.redrive_policy != null)
       error_message = "create_dlq and redrive_policy cannot be used together. Use one of them: either let the module create a DLQ or point redrive_policy to an existing queue."
     }
@@ -66,10 +74,18 @@ resource "yandex_message_queue" "this" {
 resource "yandex_message_queue" "dlq" {
   count = var.create_dlq ? 1 : 0
 
-  name       = local.dlq_name
-  fifo_queue = var.fifo_queue
-  tags       = var.tags
-  region_id  = var.region_id
+  name                       = local.dlq_name
+  visibility_timeout_seconds = var.dlq_visibility_timeout_seconds
+  receive_wait_time_seconds  = var.dlq_receive_wait_time_seconds
+  message_retention_seconds  = var.dlq_message_retention_seconds
+  max_message_size           = var.dlq_max_message_size
+  delay_seconds              = var.dlq_delay_seconds
+
+  fifo_queue                  = var.fifo_queue
+  content_based_deduplication = var.fifo_queue ? var.dlq_content_based_deduplication : null
+
+  tags      = local.dlq_tags
+  region_id = var.region_id
 
   lifecycle {
     precondition {
